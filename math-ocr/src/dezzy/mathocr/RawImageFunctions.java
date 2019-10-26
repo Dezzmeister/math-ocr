@@ -91,11 +91,10 @@ public final class RawImageFunctions {
 	}
 	
 	/**
-	 * Maps the pixels of an image to new pixel values. Averages the components of each pixel
-	 * (may be blue, grayscale, etc.) to obtain a grayscale value. If the grayscale value is 
+	 * Maps the pixels of an image to new pixel values. For each pixel, if its value is 
 	 * less than <code>(256 * threshold)</code>, then the output is 0, otherwise it's 255.
 	 * 
-	 * @param pixels RGB pixel array
+	 * @param pixels grayscale pixel array
 	 * @param threshold normalized value where 0 is black and 1 is white
 	 * @return pixels that are either white or black (only least significant byte is defined)
 	 */
@@ -103,13 +102,8 @@ public final class RawImageFunctions {
 		final int barrier = (int)(threshold * 256);
 		final int[] newPixels = new int[pixels.length];
 		
-		for (int i = 0; i < pixels.length; i++) {
-			final int red = (pixels[i] >>> 16) & 0xFF;
-			final int green = (pixels[i] >>> 8) & 0xFF;
-			final int blue = pixels[i] & 0xFF;
-			final int gray = (red + green + blue) / 3;
-			
-			newPixels[i] = (gray < barrier) ? 0 : 255;
+		for (int i = 0; i < pixels.length; i++) {			
+			newPixels[i] = (pixels[i] < barrier) ? 0 : 255;
 		}
 		
 		return newPixels;
@@ -152,12 +146,85 @@ public final class RawImageFunctions {
 		return newImage;
 	}
 	
-	public static int[][] applyConvolution(final int[][] pixels, final Matrix kernel) {
+	/**
+	 * Converts an RGB image into a grayscale image with one channel.
+	 * 
+	 * @param rgbPixels rgb pixels
+	 * @return grayscale image
+	 */
+	public static int[] toGrayscale(final int[] rgbPixels) {
+		final int[] output = new int[rgbPixels.length];
+		
+		for (int i = 0; i < rgbPixels.length; i++) {
+			final int rawRGB = rgbPixels[i];
+			final int red = (rawRGB >>> 16) & 0xFF;
+			final int blue = (rawRGB >>> 8) & 0xFF;
+			final int green = rawRGB & 0xFF;
+			
+			output[i] = (red + green + blue) / 3;
+		}
+		
+		return output;
+	}
+	
+	/**
+	 * Applies a convolution matrix to an image on a specified RGB channel.
+	 * 
+	 * @param pixels image
+	 * @param kernel convolution matrix
+	 * @param channelMask Example for RGB pixels: 0xFF0000 will apply the matrix only to red values
+	 * @return new image with convolution matrix applied
+	 */
+	public static int[][] convolve(final int[][] pixels, final Matrix kernel, final int channelMask) {
 		if (kernel.rows % 2 == 0 || kernel.cols % 2 == 0) {
 			throw new DimensionMismatchException("Kernel must have odd number of rows and columns!");
 		}
 		
-		//TODO: Finish this and use edge detection kernel instead of black/white threshold
-		return null;
+		if (channelMask == 0) {
+			throw new IllegalArgumentException("Channel mask must not be zero!");
+		}
+		
+		int shiftValue = 0;
+		
+		int channel = channelMask;
+		while ((channel & 1) != 1) {
+			shiftValue++;
+			channel >>>= 1;
+		}
+		
+		final int rows = pixels.length;
+		final int cols = pixels[0].length;
+		final int kernelRowOffset = (kernel.rows / 2);
+		final int kernelColOffset = (kernel.cols / 2);
+		final int[][] output = new int[rows][cols];
+		
+		for (int row = 0; row < (rows - kernel.rows); row++) {
+			for (int col = 0; col < (cols - kernel.cols); col++) {
+				float accumulation = 0;
+				
+				for (int kernelRow = 0; kernelRow < kernel.rows; kernelRow++) {
+					for (int kernelCol = 0; kernelCol < kernel.cols; kernelCol++) {
+						accumulation += (pixels[row + kernelRow][col + kernelCol] * kernel.get(kernelRow, kernelCol));
+					}
+				}
+				
+				final int newValue;
+				
+				if (accumulation < 0) {
+					newValue = 0;
+				} else if (accumulation > 255) {
+					newValue = 255;
+				} else {
+					newValue = (int) accumulation;
+				}
+				
+				final int oldColor = pixels[row + kernelRowOffset][col + kernelColOffset];
+				final int newColor = (~channelMask & oldColor) | (newValue << shiftValue);
+				
+				output[row + kernelRowOffset][col + kernelColOffset] = newColor;
+			}
+		}
+		
+		return output;
 	}
 }

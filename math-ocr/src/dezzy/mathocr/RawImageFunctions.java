@@ -2,19 +2,15 @@ package dezzy.mathocr;
 
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
-import java.awt.image.ColorModel;
-import java.awt.image.DataBuffer;
 import java.awt.image.DataBufferInt;
-import java.awt.image.DirectColorModel;
-import java.awt.image.Raster;
-import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 import javax.imageio.ImageIO;
 
 import dezzy.neuronz2.math.constructs.Matrix;
-import dezzy.neuronz2.math.utility.DimensionMismatchException;
 
 /**
  * Functions to handle raw math images and prepare them for processing.
@@ -120,13 +116,52 @@ public final class RawImageFunctions {
 	 * @throws IOException if there is a problem creating or writing to the file
 	 */
 	public static void saveGrayscale(final int[] pixels, final int width, final int height, final String path) throws IOException {
-		final DataBuffer rgbData = new DataBufferInt(pixels, pixels.length);
-		final WritableRaster raster = Raster.createPackedRaster(rgbData, width, height, width, new int[] {0xFF, 0xFF, 0xFF}, null);
-		final ColorModel colorModel = new DirectColorModel(24, 0xFF, 0xFF, 0xFF);
-		final BufferedImage image = new BufferedImage(colorModel, raster, false, null);
+		final BufferedImage image = createGrayscaleImage(pixels, width, height);
 		final String fileExtension = path.substring(path.lastIndexOf(".") + 1);
 		
 		ImageIO.write(image, fileExtension, new File(path));
+	}
+	
+	/**
+	 * Saves an <code>int[][]</code> as an image. The image will be grayscale, and will treat each element of the input array as gray value from
+	 * 0 to 255. Only the least significant byte is used.
+	 * 
+	 * @param pixels grayscale pixels of the image
+	 * @param path path to the image file
+	 * @throws IOException if there is a problem creating or writing to the file
+	 */
+	public static void saveGrayscale(final int[][] pixels, final String path) throws IOException {
+		saveGrayscale(to1D(pixels), pixels[0].length, pixels.length, path);
+	}
+	
+	/**
+	 * Creates a {@link BufferedImage} from a grayscale image.
+	 * 
+	 * @param pixels grayscale pixels
+	 * @param width width of the image
+	 * @param height height of the image
+	 * @return the image
+	 */
+	public static BufferedImage createGrayscaleImage(final int[] pixels, final int width, final int height) {
+		final BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+		final int[] pixelData = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
+		
+		for (int i = 0; i < pixels.length; i++) {
+			final int gray = pixels[i];
+			pixelData[i] = (gray << 16) | (gray << 8) | gray;
+		}
+		
+		return image;
+	}
+	
+	/**
+	 * Creates a {@link BufferedImage} from a grayscale image.
+	 * 
+	 * @param pixels grayscale pixels
+	 * @return the image
+	 */
+	public static BufferedImage createGrayscaleImage(final int[][] pixels) {
+		return createGrayscaleImage(to1D(pixels), pixels[0].length, pixels.length);
 	}
 	
 	/**
@@ -168,6 +203,70 @@ public final class RawImageFunctions {
 	}
 	
 	/**
+	 * Performs a map operation on pixels.
+	 * 
+	 * @param pixels pixels
+	 * @param operation map operation
+	 * @return new pixel array with operation applied per element
+	 */
+	public static int[][] map(final int[][] pixels, final Function<Integer, Integer> operation) {
+		final int[][] output = new int[pixels.length][pixels[0].length];
+		
+		for (int row = 0; row < pixels.length; row++) {
+			for (int col = 0; col < pixels[0].length; col++) {
+				output[row][col] = operation.apply(pixels[row][col]);
+			}
+		}
+		
+		return output;
+	}
+	
+	/**
+	 * Performs a map2 operation on the pixels of two images.
+	 * 
+	 * @param pixels1 first image
+	 * @param pixels2 second image
+	 * @param operation function of two pixels
+	 * @return new pixel array with operation applied per pair of elements
+	 * @throws IllegalArgumentException if the images are not the same size
+	 */
+	public static int[][] map2(final int[][] pixels1, final int[][] pixels2, final BiFunction<Integer, Integer, Integer> operation) {
+		if (pixels1.length != pixels2.length || pixels1[0].length != pixels2[0].length) {
+			throw new IllegalArgumentException("Pixel arrays must have the same dimensions!");
+		}
+		
+		final int[][] output = new int[pixels1.length][pixels1[0].length];
+		
+		for (int row = 0; row < pixels1.length; row++) {
+			for (int col = 0; col < pixels1[0].length; col++) {
+				output[row][col] = operation.apply(pixels1[row][col], pixels2[row][col]);
+			}
+		}
+		
+		return output;
+	}
+	
+	/**
+	 * Constrains each pixel value to the range 0-255.
+	 * 
+	 * @param pixels grayscale pixels
+	 * @return 
+	 */
+	public static int[][] constrain(final int[][] pixels) {
+		final Function<Integer, Integer> operation = (x) -> {
+			if (x < 0) {
+				return 0;
+			} else if (x > 255) {
+				return 255;
+			} else {
+				return x;
+			}
+		};
+		
+		return map(pixels, operation);
+	}
+	
+	/**
 	 * Applies a convolution matrix to an image on a specified RGB channel.
 	 * 
 	 * @param pixels image
@@ -176,10 +275,6 @@ public final class RawImageFunctions {
 	 * @return new image with convolution matrix applied
 	 */
 	public static int[][] convolve(final int[][] pixels, final Matrix kernel, final int channelMask) {
-		if (kernel.rows % 2 == 0 || kernel.cols % 2 == 0) {
-			throw new DimensionMismatchException("Kernel must have odd number of rows and columns!");
-		}
-		
 		if (channelMask == 0) {
 			throw new IllegalArgumentException("Channel mask must not be zero!");
 		}
@@ -194,8 +289,6 @@ public final class RawImageFunctions {
 		
 		final int rows = pixels.length;
 		final int cols = pixels[0].length;
-		final int kernelRowOffset = (kernel.rows / 2);
-		final int kernelColOffset = (kernel.cols / 2);
 		final int[][] output = new int[rows][cols];
 		
 		for (int row = 0; row < (rows - kernel.rows); row++) {
@@ -210,18 +303,12 @@ public final class RawImageFunctions {
 				
 				final int newValue;
 				
-				if (accumulation < 0) {
-					newValue = 0;
-				} else if (accumulation > 255) {
-					newValue = 255;
-				} else {
-					newValue = (int) accumulation;
-				}
+				newValue = (int) accumulation;
 				
-				final int oldColor = pixels[row + kernelRowOffset][col + kernelColOffset];
+				final int oldColor = pixels[row][col];
 				final int newColor = (~channelMask & oldColor) | (newValue << shiftValue);
 				
-				output[row + kernelRowOffset][col + kernelColOffset] = newColor;
+				output[row][col] = newColor;
 			}
 		}
 		

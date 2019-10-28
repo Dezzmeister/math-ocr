@@ -88,18 +88,37 @@ public final class RawImageFunctions {
 	
 	/**
 	 * Maps the pixels of an image to new pixel values. For each pixel, if its value is 
-	 * less than <code>(256 * threshold)</code>, then the output is 0, otherwise it's 255.
+	 * less than <code>threshold</code>, then the output is 0, otherwise it's 255.
 	 * 
 	 * @param pixels grayscale pixel array
-	 * @param threshold normalized value where 0 is black and 1 is white
+	 * @param threshold grayscale value from 0 to 255
 	 * @return pixels that are either white or black (only least significant byte is defined)
 	 */
-	public static final int[] maxContrast(final int[] pixels, final float threshold) {
-		final int barrier = (int)(threshold * 256);
+	public static final int[] threshold(final int[] pixels, final int threshold) {
 		final int[] newPixels = new int[pixels.length];
 		
 		for (int i = 0; i < pixels.length; i++) {			
-			newPixels[i] = (pixels[i] < barrier) ? 0 : 255;
+			newPixels[i] = (pixels[i] < threshold) ? 0 : 255;
+		}
+		
+		return newPixels;
+	}
+	
+	/**
+	 * Maps the pixels of an image to new pixel values. For each pixel, if its value is
+	 * less than <code>threshold</code>, then the output is 0, otherwise it's 255.
+	 * 
+	 * @param pixels grayscale pixel array
+	 * @param threshold grayscale value from 0 to 255
+	 * @return pixels that are either white or black (only least significant byte is defined)
+	 */
+	public static final int[][] threshold(final int[][] pixels, final int threshold) {
+		final int[][] newPixels = new int[pixels.length][pixels[0].length];
+		
+		for (int row = 0; row < pixels.length; row++) {
+			for (int col = 0; col < pixels[0].length; col++) {
+				newPixels[row][col] = (pixels[row][col] < threshold) ? 0 : 255;
+			}
 		}
 		
 		return newPixels;
@@ -264,6 +283,57 @@ public final class RawImageFunctions {
 		};
 		
 		return map(pixels, operation);
+	}
+	
+	/**
+	 * Uses the "Otsu Method" for thresholding to determine the optimal threshold for a given intensity histogram.
+	 * 
+	 * @param histogram intensity histogram of the image
+	 * @return best global threshold
+	 * @see Metrics#intensityHistogram(int[][])
+	 */
+	public static int otsuThresholding(final int[] histogram) {		
+		int numPixels = 0;
+		
+		for (int i = 0; i < histogram.length; i++) {
+			numPixels += histogram[i];
+		}
+		
+		float sum = 0;
+		for (int i = 0; i < 256; i++) {
+			sum += i * histogram[i];
+		}
+		
+		float sumB = 0;
+		int wB = 0;
+		int wF = 0;
+		
+		float maxVariance = 0;
+		int threshold = 0;
+		
+		for (int i = 0; i < 256; i++) {
+			wB += histogram[i];
+			
+			if (wB == 0) continue;
+			
+			wF = numPixels - wB;
+			if (wF == 0) break;
+			
+			sumB += (float) (i * histogram[i]);
+			
+			final float mB = sumB / wB;
+			final float mF = (sum - sumB) / wF;
+			
+			final float diff = (mB - mF);
+			final float varianceBetween = wB * wF * diff * diff;
+			
+			if (varianceBetween > maxVariance) {
+				maxVariance = varianceBetween;
+				threshold = i;
+			}
+		}
+		
+		return threshold;
 	}
 	
 	/**

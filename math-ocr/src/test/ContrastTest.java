@@ -4,7 +4,7 @@ import static dezzy.mathocr.RawImageFunctions.constrain;
 import static dezzy.mathocr.RawImageFunctions.convolve;
 import static dezzy.mathocr.RawImageFunctions.getPixels;
 import static dezzy.mathocr.RawImageFunctions.load;
-import static dezzy.mathocr.RawImageFunctions.maxContrast;
+import static dezzy.mathocr.RawImageFunctions.threshold;
 import static dezzy.mathocr.RawImageFunctions.resize;
 import static dezzy.mathocr.RawImageFunctions.saveGrayscale;
 import static dezzy.mathocr.RawImageFunctions.to1D;
@@ -17,10 +17,11 @@ import dezzy.mathocr.Metrics;
 import dezzy.mathocr.RawImageFunctions;
 import dezzy.neuronz2.math.constructs.Matrix;
 
+@SuppressWarnings("unused")
 public class ContrastTest {
 	
 	public static void main(String[] args) throws IOException {
-		test0();
+		test1();
 	}
 	
 	private static void test1() throws IOException {
@@ -37,7 +38,7 @@ public class ContrastTest {
 		final var image = load("test/calcimages/4.jpg");
 		final int width = image.getWidth();
 		final int height = image.getHeight();
-		final var pixels = to2D(getPixels(image), height, width);
+		final var pixels = to2D(toGrayscale(getPixels(image)), height, width);		
 		
 		final var convX = convolve(pixels, robertsCrossX, 0xFF);
 		final var convY = convolve(pixels, robertsCrossY, 0xFF);
@@ -54,7 +55,11 @@ public class ContrastTest {
 			}
 		});
 		
+		final var histogram = Metrics.intensityHistogram(conv);
+		int threshold = RawImageFunctions.otsuThresholding(histogram);
+		//final var contrast = maxContrast
 		
+		saveGrayscale(conv, "test/contrast/img4-robertscross.png");
 	}
 	
 	private static void test0() throws IOException {
@@ -83,7 +88,7 @@ public class ContrastTest {
 		final var convolvedPixels2D = constrain(convolve(img0Pixels2D, bigEdgeDetector, 0xFF));
 		final var convolvedPixels1D = to1D(convolvedPixels2D);
 		
-		//final var maxContrast = maxContrast(convolvedPixels1D, 0.5f);
+		//final var maxContrast = maxContrast(convolvedPixels1D, 127);
 		
 		
 		saveGrayscale(convolvedPixels1D, scaledImg0.getWidth(), scaledImg0.getHeight(), "test/contrast/img4-bigEdgeDetector.png");
